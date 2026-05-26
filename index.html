@@ -2283,6 +2283,34 @@ body[data-route="home"] .countdown{display:block}
 .vid-part-btn:hover .vid-part-arrow{color:var(--accent);transform:scale(1.3)}
 .vid-part-btn.active .vid-part-arrow{color:var(--accent)}
 
+/* Arabic notes button */
+.notes-ar-btn{
+  font-size:15px;padding:13px 28px;border-radius:14px;
+  width:100%;max-width:420px;display:flex;justify-content:center;
+  margin:0 auto;gap:10px;
+  box-shadow:0 4px 20px -4px rgba(122,162,255,.4),0 1px 0 rgba(255,255,255,.5) inset;
+  letter-spacing:.01em;
+}
+.notes-ar-btn:hover{box-shadow:0 6px 28px -4px rgba(122,162,255,.55),0 1px 0 rgba(255,255,255,.5) inset}
+
+/* Mark-as-watched button */
+.vid-mark-wrap{margin-top:10px;display:none}
+.vid-mark-wrap.show{display:block}
+.vid-mark-btn{
+  width:100%;border:1.5px dashed rgba(94,228,163,.35);background:rgba(94,228,163,.05);
+  color:#5ee4a3;cursor:pointer;
+  padding:10px 16px;border-radius:12px;
+  font:600 13px/1 'Geist','Inter',system-ui,sans-serif;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:background .18s,border-color .18s,transform .15s;
+}
+.vid-mark-btn:hover{background:rgba(94,228,163,.12);border-color:rgba(94,228,163,.6);transform:translateY(-1px)}
+.vid-mark-btn.done{
+  background:rgba(94,228,163,.12);border-style:solid;border-color:rgba(94,228,163,.5);
+  cursor:default;color:#5ee4a3;
+}
+.vid-mark-btn .vmb-icon{font-size:16px;line-height:1}
+
 /* Finalize section — important badge */
 .vid-accord-finalize .vid-accord-week{
   background:rgba(255,80,80,.12);border-color:rgba(255,80,80,.3);
@@ -3278,7 +3306,10 @@ section.is-collapsed > .asrar-sec-body{grid-template-rows:0fr;opacity:0}
       </div>
     </div>
     <div style="margin-bottom:16px">
-      <button class="btn accent" data-route="notes-ar" style="font-family:'IBM Plex Sans Arabic','Geist',sans-serif;font-size:15px;padding:12px 24px;border-radius:12px;width:100%;max-width:420px;display:block;margin:0 auto;">ملاحظات الدراسة باللغة العربية</button>
+      <button class="btn accent notes-ar-btn" data-route="notes-ar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        <span style="font-family:'IBM Plex Sans Arabic','Geist',sans-serif">ملاحظات باللغة العربية · اضغط هنا</span>
+      </button>
     </div>
     <article class="notes" id="notes-en-content"></article>
   </main>
@@ -3325,6 +3356,12 @@ section.is-collapsed > .asrar-sec-body{grid-template-rows:0fr;opacity:0}
         <div class="vid-now-playing" id="vidNowPlaying" style="display:none">
           <span class="vid-np-label">Now playing:</span>
           <span class="vid-np-title" id="vidNowPlayingTitle"></span>
+        </div>
+        <div class="vid-mark-wrap" id="vidMarkWrap">
+          <button class="vid-mark-btn" id="vidMarkBtn">
+            <span class="vmb-icon">✓</span>
+            <span id="vidMarkLabel">Mark as watched</span>
+          </button>
         </div>
       </div>
 
@@ -5583,16 +5620,45 @@ function saveVidProgress(p){ localStorage.setItem('vidProgress', JSON.stringify(
 
 function renderVideos(){
   const progress = loadVidProgress();
-  // Render checkmarks for completed videos
   document.querySelectorAll('.vid-part-check').forEach(el=>{
     const id = el.id.replace('chk-','');
     el.classList.toggle('done', !!progress[id]);
   });
 
-  // Attach handlers once
   const listCol = document.getElementById('vidListCol');
   if(!listCol || listCol.dataset.vidBound) return;
   listCol.dataset.vidBound = '1';
+
+  let currentVidId = null;
+
+  // Mark-as-watched button
+  const markWrap  = document.getElementById('vidMarkWrap');
+  const markBtn   = document.getElementById('vidMarkBtn');
+  const markLabel = document.getElementById('vidMarkLabel');
+
+  function refreshMarkBtn(vidId){
+    const done = !!loadVidProgress()[vidId];
+    markBtn.classList.toggle('done', done);
+    markLabel.textContent = done ? 'Watched ✓' : 'Mark as watched';
+    markBtn.disabled = done;
+  }
+
+  markBtn.addEventListener('click', ()=>{
+    if(!currentVidId || markBtn.disabled) return;
+    markVideoComplete(currentVidId);
+    refreshMarkBtn(currentVidId);
+  });
+
+  // Auto-detect YouTube video end via postMessage
+  window.addEventListener('message', ev=>{
+    try{
+      const data = JSON.parse(ev.data);
+      if(data.event === 'onStateChange' && data.info === 0 && currentVidId){
+        markVideoComplete(currentVidId);
+        refreshMarkBtn(currentVidId);
+      }
+    }catch(ex){}
+  });
 
   // Accordion toggle
   listCol.addEventListener('click', e=>{
@@ -5605,12 +5671,12 @@ function renderVideos(){
       return;
     }
 
-    // Part button click
     const btn = e.target.closest('.vid-part-btn'); if(!btn) return;
     const vidId  = btn.dataset.vidId;
     const vidSrc = btn.dataset.vidSrc || '';
 
-    // Mark active button
+    currentVidId = vidId;
+
     document.querySelectorAll('.vid-part-btn').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
 
@@ -5625,6 +5691,9 @@ function renderVideos(){
     if(npTitle) npTitle.textContent = (nameEl ? nameEl.textContent : topicLabel) + ' · ' + (badgeEl ? badgeEl.textContent : '');
     if(nowPlaying) nowPlaying.style.display = 'flex';
 
+    markWrap.classList.add('show');
+    refreshMarkBtn(vidId);
+
     if(vidSrc){
       placeholder.classList.add('hide');
       playerEmbed.classList.remove('hide');
@@ -5637,13 +5706,6 @@ function renderVideos(){
         iframeSrc = `https://www.youtube.com/embed/${yid}?autoplay=1&enablejsapi=1`;
       }
       playerEmbed.innerHTML = `<iframe src="${iframeSrc}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
-
-      window.onmessage = function(ev){
-        try{
-          const data = JSON.parse(ev.data);
-          if(data.event === 'onStateChange' && data.info === 0) markVideoComplete(vidId);
-        }catch(ex){}
-      };
     } else {
       playerEmbed.classList.add('hide');
       placeholder.classList.remove('hide');
